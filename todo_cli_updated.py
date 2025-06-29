@@ -1,6 +1,10 @@
 import pandas as pd
 import os
 
+completed_file = "completed_todos.csv"
+if not os.path.exists(completed_file):
+    pd.DataFrame(columns=["Todo", "List", "Label"]).to_csv(completed_file, index=False)
+
 def prioritytag(n):
     labels = {
         1: "Very High",
@@ -36,7 +40,31 @@ def save(df, file_path):
 def backup(df):
     df.to_csv("undo_backup.csv", index=False)
 
-def undoaction(file_path):
+def todoadd(file_path):
+    df = load(file_path)
+    todo = input("Enter a todo: ").strip()
+
+    priority_num = get_valid_priority()
+    priority_label = prioritytag(priority_num)
+
+    tag = ""
+    if input("Do you want to add a tag? (yes/no): ").strip().lower() == "yes":
+        tag = input("Enter tag: ").strip()
+    serial = next_serial(df)
+    new_row = pd.DataFrame([[serial, todo, priority_label, priority_num, tag]],
+                           columns=["S.No.", "Todo", "Label", "Priority Number", "Tags"])
+    df = pd.concat([df, new_row], ignore_index=True)
+    save(df, file_path)
+
+def todoshow(file_path):
+    df = load(file_path)
+    if df.empty:
+        print("No todos yet.")
+    else:
+        display_df = df.sort_values(by="Priority Number")[["S.No.", "Todo", "Label", "Tags"]]
+        print(display_df.to_string(index=False))
+
+def undotodo(file_path):
     backup_file = "undo_backup.csv"
     if os.path.exists(backup_file):
         backup_df = pd.read_csv(backup_file)
@@ -45,14 +73,95 @@ def undoaction(file_path):
     else:
         print("No backup available to undo.")
 
-def next_serial(df):
+def todoedit(file_path):
+    df = load(file_path)
     if df.empty:
-        return 1
-    return df["S.No."].max() + 1
+        print("No todos to edit.")
+        print(df[["S.No.", "Todo", "Label", "Tags"]].to_string(index=False))
+        return
+    try:
+        target = int(input("Enter S.No. of the task to edit: "))
+        if target not in df["S.No."].values:
+            print("Invalid S.No.")
+            return
+        backup(df)
+        field = input("Edit name, priority, tag, or all?: ").strip().lower()
+        if "name" in field or "all" in field:
+            new_name = input("Enter new todo name: ").strip()
+            df.loc[df["S.No."] == target, "Todo"] = new_name
+        if "priority" in field or "all" in field:
+            new_priority = int(input("Enter new priority (1–5): "))
+            df.loc[df["S.No."] == target, "Priority Number"] = new_priority
+            df.loc[df["S.No."] == target, "Label"] = prioritytag(new_priority)
+        if "tag" in field or "all" in field:
+            new_tag = input("Enter new tag: ").strip()
+            df.loc[df["S.No."] == target, "Tags"] = new_tag
+        save(df, file_path)
+        print("Task updated.")
+    except ValueError:
+        print("Invalid input.")
+    except KeyError:
+        print("Task not found.")
 
-completed_file = "completed_todos.csv"
-if not os.path.exists(completed_file):
-    pd.DataFrame(columns=["Todo", "List", "Label"]).to_csv(completed_file, index=False)
+def todocomplete(file_path, list_name):
+    df = load(file_path)
+    if df.empty:
+        print("No tasks to complete.")
+        print(df[["S.No.", "Todo", "Label"]].to_string(index=False))
+        return
+    try:
+        complete_id = int(input("Enter S.No. of task to mark complete: "))
+        row = df[df["S.No."] == complete_id]
+        if row.empty:
+            print("Invalid S.No.")
+            return
+        backup(df)
+        done_df = pd.read_csv(completed_file)
+        completed_row = pd.DataFrame([[row["Todo"].values[0], list_name, row["Label"].values[0]]],
+                                     columns=["Todo", "List", "Label"])
+        done_df = pd.concat([done_df, completed_row], ignore_index=True)
+        save(done_df, completed_file)
+        df = df[df["S.No."] != complete_id]
+        save(df, file_path)
+        print("Task marked as complete.")
+    except ValueError:
+        print("Invalid S.No. or input.")
+    except KeyError:
+        print("Could not find the specified task.")
+
+def todofilter(file_path):
+    df = load(file_path)
+    if df.empty:
+        print("No todos to filter.")
+        return
+    print("Filter by: \n 1. Tag \n2. Priority")
+    choice = input("Enter 1 or 2: ").strip()
+    if choice == "1":
+        tag_input = input("Enter tag to filter by: ").strip().lower()
+        filtered = df[df["Tags"].fillna("").str.lower() == tag_input]
+    elif choice == "2":
+        try:
+            level = int(input("Enter priority number to filter by (1–5): "))
+            filtered = df[df["Priority Number"] == level]
+        except ValueError:
+            print("Invalid priority number.")
+            return
+    else:
+        print("Invalid filter choice.")
+        return
+    if filtered.empty:
+        print("No matching tasks found.")
+    else:
+        print(filtered[["S.No.", "Todo", "Label", "Tags"]].to_string(index=False))
+
+def todoview(file_path, list_name):
+    done_df = pd.read_csv(completed_file)
+    list_tasks = done_df[done_df["List"] == list_name]
+    if list_tasks.empty:
+        print(f"No completed tasks in {list_name}.")
+    else:
+        print("\nCompleted Tasks:\n")
+        print(list_tasks[["Todo", "Label"]].to_string(index=False))
 
 while True:
     list_name = input("Which list do you want to use? ").strip().lower()
@@ -60,118 +169,19 @@ while True:
     while True:
         action = input("Type add, show, edit, complete, filter, view completed, undo or exit: ").strip().lower()
         if action == "add":
-            df = load(file_path)
-            todo = input("Enter a todo: ").strip()
-
-            priority_num = get_valid_priority()
-            priority_label = prioritytag(priority_num)
-
-            tag = ""
-            if input("Do you want to add a tag? (yes/no): ").strip().lower() == "yes":
-                tag = input("Enter tag: ").strip()
-            serial = next_serial(df)
-            new_row = pd.DataFrame([[serial, todo, priority_label, priority_num, tag]],
-                                   columns=["S.No.", "Todo", "Label", "Priority Number", "Tags"])
-            df = pd.concat([df, new_row], ignore_index=True)
-            save(df, file_path)
+            todoadd(file_path)
         elif action == "show":
-            df = load(file_path)
-            if df.empty:
-                print("No todos yet.")
-            else:
-                display_df = df.sort_values(by="Priority Number")[["S.No.", "Todo", "Label", "Tags"]]
-                print(display_df.to_string(index=False))
+            todoshow(file_path)
         elif action == "edit":
-            df = load(file_path)
-            if df.empty:
-                print("No todos to edit.")
-                continue
-            print(df[["S.No.", "Todo", "Label", "Tags"]].to_string(index=False))
-            try:
-                target = int(input("Enter S.No. of the task to edit: "))
-                if target not in df["S.No."].values:
-                    print("Invalid S.No.")
-                    continue
-                backup(df)
-                field = input("Edit name, priority, tag, or all?: ").strip().lower()
-                if "name" in field or "all" in field:
-                    new_name = input("Enter new todo name: ").strip()
-                    df.loc[df["S.No."] == target, "Todo"] = new_name
-                if "priority" in field or "all" in field:
-                    new_priority = int(input("Enter new priority (1–5): "))
-                    df.loc[df["S.No."] == target, "Priority Number"] = new_priority
-                    df.loc[df["S.No."] == target, "Label"] = prioritytag(new_priority)
-                if "tag" in field or "all" in field:
-                    new_tag = input("Enter new tag: ").strip()
-                    df.loc[df["S.No."] == target, "Tags"] = new_tag
-                save(df, file_path)
-                print("Task updated.")
-                print("Task updated.")
-            except ValueError:
-                print("Invalid input.")
-            except KeyError:
-                print("Task not found.")
-
+            todoedit(file_path)
         elif action == "complete":
-            df = load(file_path)
-            if df.empty:
-                print("No tasks to complete.")
-                continue
-                print(df[["S.No.", "Todo", "Label"]].to_string(index=False))
-            try:
-                complete_id = int(input("Enter S.No. of task to mark complete: "))
-                row = df[df["S.No."] == complete_id]
-                if row.empty:
-                    print("Invalid S.No.")
-                    continue
-                backup(df)
-                done_df = pd.read_csv(completed_file)
-                completed_row = pd.DataFrame([[row["Todo"].values[0], list_name, row["Label"].values[0]]],
-                                             columns=["Todo", "List", "Label"])
-                done_df = pd.concat([done_df, completed_row], ignore_index=True)
-                save(done_df, completed_file)
-                df = df[df["S.No."] != complete_id]
-                save(df, file_path)
-                print("Task marked as complete.")
-            except ValueError:
-                print("Invalid S.No. or input.")
-            except KeyError:
-                print("Could not find the specified task.")
-
+            todocomplete(file_path, list_name)
         elif action == "filter":
-            df = load(file_path)
-            if df.empty:
-                print("No todos to filter.")
-                continue
-            print("Filter by: \n 1. Tag \n2. Priority")
-            choice = input("Enter 1 or 2: ").strip()
-            if choice == "1":
-                tag_input = input("Enter tag to filter by: ").strip().lower()
-                filtered = df[df["Tags"].fillna("").str.lower() == tag_input]
-            elif choice == "2":
-                try:
-                    level = int(input("Enter priority number to filter by (1–5): "))
-                    filtered = df[df["Priority Number"] == level]
-                except ValueError:
-                    print("Invalid priority number.")
-                    continue
-            else:
-                print("Invalid filter choice.")
-                continue
-            if filtered.empty:
-                print("No matching tasks found.")
-            else:
-                print(filtered[["S.No.", "Todo", "Label", "Tags"]].to_string(index=False))
+            todofilter(file_path)
         elif action == "view completed":
-            done_df = pd.read_csv(completed_file)
-            list_tasks = done_df[done_df["List"] == list_name]
-            if list_tasks.empty:
-                print(f"No completed tasks in {list_name}.")
-            else:
-                print("\nCompleted Tasks:\n")
-                print(list_tasks[["Todo", "Label"]].to_string(index=False))
+            todoview(file_path, list_name)
         elif action == "undo":
-            undoaction(file_path)
+            undotodo(file_path)
         elif action == "exit":
             print(f"Exiting {list_name} list.")
             break
@@ -185,7 +195,6 @@ while True:
         print("2. Switch to another list")
         print("3. Exit the app")
         post_choice = input("Enter choice (1/2/3): ").strip()
-
         if post_choice == "1":
             done_df = pd.read_csv(completed_file)
             if done_df.empty:
@@ -198,7 +207,7 @@ while True:
         elif post_choice == "2":
             break
         elif post_choice == "3":
-            print("You are all done")
+            print("Exiting")
             exit()
         else:
             print("Invalid choice. Try 1, 2 or 3.")
