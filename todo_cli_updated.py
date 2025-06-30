@@ -64,7 +64,7 @@ def todoshow(file_path):
         display_df = df.sort_values(by="Priority Number")[["S.No.", "Todo", "Label", "Tags"]]
         print(display_df.to_string(index=False))
 
-def undotodo(file_path):
+def todoundo(file_path):
     backup_file = "undo_backup.csv"
     if os.path.exists(backup_file):
         backup_df = pd.read_csv(backup_file)
@@ -181,7 +181,7 @@ while True:
         elif action == "view completed":
             todoview(file_path, list_name)
         elif action == "undo":
-            undotodo(file_path)
+            todoundo(file_path)
         elif action == "exit":
             print(f"Exiting {list_name} list.")
             break
